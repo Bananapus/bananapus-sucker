@@ -6,11 +6,7 @@ import {OPMessenger} from "../../src/interfaces/OPMessenger.sol";
 contract MockMessenger is OPMessenger {
     address public xDomainMessageSender;
 
-    function sendMessage(
-        address _target,
-        bytes memory _message,
-        uint32 _gasLimit
-    ) external payable {
+    function sendMessage(address _target, bytes memory _message, uint32 _gasLimit) external payable {
         // Update the sender
         xDomainMessageSender = msg.sender;
         // Perform the 'crosschain' call

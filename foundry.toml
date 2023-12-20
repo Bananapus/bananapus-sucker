@@ -1,4 +1,6 @@
 [profile.default]
+solc = '0.8.23'
+evm_version = 'paris'
 src = "src"
 out = "out"
 libs = ["node_modules", "lib"]
