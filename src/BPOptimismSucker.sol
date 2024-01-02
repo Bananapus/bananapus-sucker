@@ -134,17 +134,13 @@ contract BPOptimismSucker is JBPermissioned {
         );
 
         // Sanity check to make sure we actually received the reported amount.
+        // Prevents a malicious terminal from reporting a higher amount than it actually sent.
         assert(_redemptionTokenAmount == address(this).balance - _balanceBefore);
 
-        // Store the queued item
-        BPSuckerData storage _queue = queue[_localProjectId][JBConstants.NATIVE_TOKEN];
-        _queue.redemptionAmount += _redemptionTokenAmount;
-        _queue.items.push(BPSuckQueueItem({beneficiary: _beneficiary, tokensRedeemed: _projectTokenAmount}));
-
-        // Check if we should work the queue or if we only needed to append this suck to the queue.
-        if (_forceSend || _queue.items.length == MAX_BATCH_SIZE) {
-            _workQueue(_localProjectId, _remoteProjectId, JBConstants.NATIVE_TOKEN);
-        }
+        // Queue the item.
+        _queueItem(
+            _localProjectId, _remoteProjectId, _projectTokenAmount, _redemptionTokenAmount, _beneficiary, _forceSend
+        );
     }
 
     /// @notice Receive from the remote project.
@@ -197,13 +193,11 @@ contract BPOptimismSucker is JBPermissioned {
 
     /// @notice Register a remote projectId as the peer of a local projectId.
     /// @param _localProjectId the project Id on this chain.
-    /// @param _remoteProjectId the project Id on the remote chain (or '0' to disable). 
+    /// @param _remoteProjectId the project Id on the remote chain (or '0' to disable).
     function register(uint256 _localProjectId, uint256 _remoteProjectId) external {
         // Access control.
         _requirePermissionFrom(
-            DIRECTORY.PROJECTS().ownerOf(_localProjectId),
-            _localProjectId,
-            JBPermissionIds.QUEUE_RULESETS
+            DIRECTORY.PROJECTS().ownerOf(_localProjectId), _localProjectId, JBPermissionIds.QUEUE_RULESETS
         );
 
         acceptFromRemote[_localProjectId] = _remoteProjectId;
@@ -215,6 +209,25 @@ contract BPOptimismSucker is JBPermissioned {
     //*********************************************************************//
     // --------------------- internal transactions ----------------------- //
     //*********************************************************************//
+
+    function _queueItem(
+        uint256 _localProjectId,
+        uint256 _remoteProjectId,
+        uint256 _projectTokenAmount,
+        uint256 _redemptionTokenAmount,
+        address _beneficiary,
+        bool _forceSend
+    ) internal {
+        // Store the queued item
+        BPSuckerData storage _queue = queue[_localProjectId][JBConstants.NATIVE_TOKEN];
+        _queue.redemptionAmount += _redemptionTokenAmount;
+        _queue.items.push(BPSuckQueueItem({beneficiary: _beneficiary, tokensRedeemed: _projectTokenAmount}));
+
+        // Check if we should work the queue or if we only needed to append this suck to the queue.
+        if (_forceSend || _queue.items.length == MAX_BATCH_SIZE) {
+            _workQueue(_localProjectId, _remoteProjectId, JBConstants.NATIVE_TOKEN);
+        }
+    }
 
     /// @notice Works a specific queue, sending the sucks to the peer on the remote chain.
     /// @param _localProjectId the projectID on this chain.
@@ -234,7 +247,11 @@ contract BPOptimismSucker is JBPermissioned {
         OPMESSENGER.sendMessage{value: _queue.redemptionAmount}(
             PEER,
             abi.encodeWithSelector(
-                BPOptimismSucker.fromRemote.selector, _remoteProjectId, _localProjectId, _queue.redemptionAmount, _queue.items
+                BPOptimismSucker.fromRemote.selector,
+                _remoteProjectId,
+                _localProjectId,
+                _queue.redemptionAmount,
+                _queue.items
             ),
             _gasLimit
         );
